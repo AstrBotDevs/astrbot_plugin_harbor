@@ -7,6 +7,7 @@ PLUGIN_FILES = (
     "agent.py",
     "run_agent.py",
     "tracing.py",
+    "reporting.py",
     "metadata.yaml",
     "requirements-tracing.txt",
 )

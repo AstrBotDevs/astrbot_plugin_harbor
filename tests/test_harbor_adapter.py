@@ -17,8 +17,9 @@ from harbor.models.agent.context import AgentContext
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("tracing", [False, True])
+@pytest.mark.parametrize("locked", [False, True])
 async def test_source_snapshot_includes_edits_but_not_runtime_data(
-    tmp_path, monkeypatch, tracing
+    tmp_path, monkeypatch, tracing, locked
 ):
     """Package current tracked source without the user's private runtime files."""
     checkout = tmp_path / "checkout"
@@ -39,6 +40,8 @@ async def test_source_snapshot_includes_edits_but_not_runtime_data(
     )
     (checkout / "data").mkdir()
     (checkout / "data/secret.json").write_text("private", encoding="utf-8")
+    if not locked:
+        (checkout / "uv.lock").unlink()
     contents = {}
     if tracing:
         monkeypatch.setenv(
@@ -63,7 +66,10 @@ async def test_source_snapshot_includes_edits_but_not_runtime_data(
     assert "class HarborPlugin" in contents["harbor_plugin/main.py"]
     assert "def trace_agent" in contents["harbor_plugin/tracing.py"]
     assert "arize-phoenix-otel" in contents["harbor_plugin/requirements-tracing.txt"]
-    assert contents["uv.lock"] == "original"
+    assert ("uv.lock" in contents) == locked
+    assert (
+        "--frozen" in agent.exec_as_root.call_args_list[0].kwargs["command"]
+    ) == locked
     assert not any(name.startswith("data/") for name in contents)
     assert agent.snapshot_sha256
     assert agent.exec_as_root.await_count == (2 if tracing else 1)

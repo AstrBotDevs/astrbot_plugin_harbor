@@ -8,7 +8,7 @@
 
 更新 AstrBot 后，新评测直接打包该 checkout 的最新源码；不需要重新应用补丁。插件自己的代码独立更新。当前已针对 AstrBot 4.28.1 和 Harbor 0.23.0 验证；metadata 中的版本范围不代表未来版本全部经过验证。
 
-Harbor 命令所在的 Python 环境需要安装 `requirements-harbor.txt`。AstrBot checkout 需要 `uv.lock`，缺少时在 AstrBot 目录执行 `uv lock`。Phoenix 依赖仅在评测容器启用上报时安装，不写入 AstrBot 的依赖声明。
+Harbor 命令所在的 Python 环境需要安装 `requirements-harbor.txt`。AstrBot checkout 可以包含 `uv.lock`；没有锁文件时，在评测容器中解析依赖，并保存 `agent/dependencies.lock`。Phoenix 依赖仅在评测容器启用上报时安装，不写入 AstrBot 的依赖声明。
 
 ## Harbor CLI
 
@@ -24,7 +24,7 @@ harbor run -p /path/to/harbor-task \
   -m openai/your-model
 ```
 
-Harbor Studio 的 Settings → AstrBot 源码目录填写原版 checkout 路径即可。adapter 会打包 Git 跟踪的 AstrBot 源码（包括当前文件修改）、本地 `uv.lock` 和明确列出的插件运行文件；不会复制宿主机配置、数据库、其他插件、Git 历史或缓存。依赖在每个 Harbor 容器内安装。源码包 SHA-256 写入结果用于关联本次运行。
+Harbor Studio 已支持独立 adapter 包和 GitHub commit：在运行页选择仓库及版本，无需设置本地 AstrBot 路径。直接调用 Harbor CLI 时仍可传入本地 `source_dir`。adapter 会打包 Git 跟踪的 AstrBot 源码（包括当前文件修改）、本地 `uv.lock` 和明确列出的插件运行文件；不会复制宿主机配置、数据库、其他插件、Git 历史或缓存。依赖在每个 Harbor 容器内安装。源码包 SHA-256 写入结果用于关联本次运行。
 
 每题启动独立进程，在临时 `ASTRBOT_ROOT` 中通过 AstrBot 原生插件加载器加载本插件。评测使用完整本地工具权限、禁用平台连接和 cron 工具；这些设置只作用于该一次性实例。宿主机的 AstrBot 配置不变。Harbor 控制超时、容器清理与评分。当前只支持 local agent runner，不支持题目 MCP servers。
 
@@ -72,3 +72,14 @@ ruff check .
 ## License
 
 AGPL-3.0-or-later，与复用的 AstrBot 评测代码一致，见 `LICENSE`。
+
+## 独立产品集成
+
+`studio-agent.json` 是 Harbor Studio v1 adapter 清单。工作台可将本插件打包成独立 adapter，固定内容 hash 后再传给 Harbor，不依赖开发者本机的 AstrBot 仓库。运行结果额外输出通用 `agent/studio-result.json`（schema_version=1），包含标准 token counters 和 trace 信息；Harbor context 同时带有 `metadata.studio`。原生 `result.json` 和日志继续保留。
+
+```bash
+# From Harbor Studio, explicitly install this plugin release:
+uv run python scripts/install_adapter.py /path/to/plugin/studio-agent.json --package /path/to/plugin
+```
+
+已有运行保留原 adapter 快照，更新插件不会改变其执行代码。未提交依赖锁文件的 GitHub commit 会在容器中解析依赖，源码固定不代表所有第三方包版本也已固定。

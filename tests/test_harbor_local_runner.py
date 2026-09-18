@@ -213,8 +213,12 @@ def test_local_evaluation_uses_real_tools_and_workspace(
     ]
     assert json.dumps(str(workspace))[1:-1] in json.dumps(tool_results)
     result = json.loads((output / "result.json").read_text())
+    report = json.loads((output / "studio-result.json").read_text())
+    assert report["schema_version"] == 1
+    assert report["tokens"]["input"] == 10 * (tool_rounds + 1)
+    assert report["trace"] == result.get("trace")
     assert result["status"] == "completed"
-    assert result["plugin_version"] == "v0.1.0"
+    assert result["plugin_version"] == "v0.2.0"
     assert result["max_steps"] is None
     assert result["permissions"] == {
         "allow_execution": True,

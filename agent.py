@@ -15,6 +15,7 @@ from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
 from . import PLUGIN_FILES
+from .reporting import studio_report
 
 
 class AstrBotAgent(BaseInstalledAgent):
@@ -77,10 +78,9 @@ class AstrBotAgent(BaseInstalledAgent):
         Raises:
             RuntimeError: If the checkout or installation is invalid.
         """
-        if not (self.source_dir / "uv.lock").is_file():
-            raise RuntimeError(
-                "source_dir must point to an AstrBot checkout with uv.lock"
-            )
+        if not (self.source_dir / "pyproject.toml").is_file():
+            raise RuntimeError("source_dir must point to an AstrBot checkout")
+        frozen = "--frozen " if (self.source_dir / "uv.lock").is_file() else ""
         tracked_files = await asyncio.to_thread(
             subprocess.check_output,
             [
@@ -128,7 +128,7 @@ class AstrBotAgent(BaseInstalledAgent):
                 "curl -LsSf https://astral.sh/uv/install.sh | "
                 "env UV_INSTALL_DIR=/installed-agent/bin sh && "
                 "UV_PYTHON_INSTALL_DIR=/installed-agent/python "
-                "/installed-agent/bin/uv sync --frozen --no-dev --python 3.12 "
+                f"/installed-agent/bin/uv sync {frozen}--no-dev --python 3.12 "
                 "--project /installed-agent/astrbot"
             ),
         )
@@ -240,5 +240,6 @@ class AstrBotAgent(BaseInstalledAgent):
         context.metadata = {
             **(context.metadata or {}),
             "astrbot": result,
+            "studio": studio_report(result),
             "source_archive_sha256": self.snapshot_sha256,
         }

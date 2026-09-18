@@ -13,6 +13,8 @@ from pathlib import Path
 from time import time
 from uuid import uuid4
 
+from reporting import write_result
+
 
 async def run(args: argparse.Namespace) -> None:
     """Initialize an isolated AstrBot instance and execute one evaluation task.
@@ -137,8 +139,10 @@ async def run(args: argparse.Namespace) -> None:
         "status": "initializing",
     }
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    lock = Path(__import__("astrbot").__file__).resolve().parents[1] / "uv.lock"
+    if lock.is_file():
+        shutil.copy2(lock, args.output_dir / "dependencies.lock")
     result_path = args.output_dir / "result.json"
-    result_tmp = args.output_dir / "result.json.tmp"
     with (
         (args.output_dir / "events.jsonl").open("w", encoding="utf-8") as event_log,
         ExitStack() as tracing,
@@ -244,10 +248,7 @@ async def run(args: argparse.Namespace) -> None:
             tracing.enter_context(
                 plugin.trace_evaluation(runner, result, instruction, args.trial_id)
             )
-            result_tmp.write_text(
-                json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            result_tmp.replace(result_path)
+            write_result(result, result_path)
             async for response in plugin.responses(runner):
                 event_log.write(
                     json.dumps(
@@ -266,10 +267,7 @@ async def run(args: argparse.Namespace) -> None:
                 event_log.flush()
                 # Persist usage while running so a hard timeout leaves useful data.
                 result["stats"] = runner.stats.to_dict()
-                result_tmp.write_text(
-                    json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
-                )
-                result_tmp.replace(result_path)
+                write_result(result, result_path)
             if runner.state != AgentState.DONE:
                 raise RuntimeError(f"AstrBot ended in state {runner.state.name}")
             final_response = runner.get_final_llm_resp()
@@ -295,10 +293,7 @@ async def run(args: argparse.Namespace) -> None:
                     ),
                     encoding="utf-8",
                 )
-            result_tmp.write_text(
-                json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            result_tmp.replace(result_path)
+            write_result(result, result_path)
             if initialized:
                 await lifecycle.stop()
             await db_helper.engine.dispose()
