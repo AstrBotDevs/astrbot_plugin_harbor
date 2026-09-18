@@ -120,26 +120,69 @@ class AstrBotAgent(BaseInstalledAgent):
         await self.ensure_system_dependencies(
             environment, ("curl", "git", "build_tools")
         )
+        # Operator-supplied toolchains avoid GitHub downloads on restricted networks.
+        runtime = self._get_env("ASTRBOT_HARBOR_RUNTIME_ARCHIVE")
+        install_env = {"UV_HTTP_TIMEOUT": "30", "UV_HTTP_RETRIES": "2"}
+        if index := self._get_env("ASTRBOT_HARBOR_PYPI_INDEX"):
+            install_env["UV_DEFAULT_INDEX"] = index
+        log = shlex.quote(str(self.environment_logs_dir / "setup.log"))
         await self.exec_as_root(
             environment,
             command=(
                 "mkdir -p /installed-agent/astrbot && "
-                "tar -xzf /installed-agent/astrbot.tar.gz -C /installed-agent/astrbot && "
-                "curl -LsSf https://astral.sh/uv/install.sh | "
-                "env UV_INSTALL_DIR=/installed-agent/bin sh && "
-                "UV_PYTHON_INSTALL_DIR=/installed-agent/python "
-                f"/installed-agent/bin/uv sync {frozen}--no-dev --python 3.12 "
-                "--project /installed-agent/astrbot"
+                "tar -xzf /installed-agent/astrbot.tar.gz -C /installed-agent/astrbot"
             ),
+        )
+        if runtime:
+            runtime_path = Path(runtime).expanduser().resolve(strict=True)
+            runtime_hash = hashlib.sha256(runtime_path.read_bytes()).hexdigest()
+            await environment.upload_file(
+                runtime_path, "/installed-agent/runtime.tar.gz"
+            )
+            await self.exec_as_root(
+                environment,
+                command=(
+                    f"echo 'Extracting toolchain sha256:{runtime_hash}' | tee -a {log} && "
+                    "tar -xzf /installed-agent/runtime.tar.gz -C /installed-agent && "
+                    f"/installed-agent/bin/uv --version | tee -a {log} && "
+                    f"/installed-agent/python/bin/python3.12 --version | tee -a {log}"
+                ),
+            )
+            python = "/installed-agent/python/bin/python3.12"
+            install_env["UV_PYTHON_DOWNLOADS"] = "never"
+        else:
+            await self.exec_as_root(
+                environment,
+                command=(
+                    f"echo 'Downloading uv toolchain' | tee -a {log} && "
+                    "curl -LsSf --connect-timeout 15 --max-time 60 --retry 2 "
+                    "https://astral.sh/uv/install.sh -o /installed-agent/uv-install.sh && "
+                    "env UV_INSTALL_DIR=/installed-agent/bin "
+                    f"timeout 120 sh /installed-agent/uv-install.sh 2>&1 | tee -a {log}"
+                ),
+            )
+            python = "3.12"
+            install_env["UV_PYTHON_INSTALL_DIR"] = "/installed-agent/python"
+        await self.exec_as_root(
+            environment,
+            command=(
+                f"echo 'Installing AstrBot dependencies' | tee -a {log} && "
+                f"/installed-agent/bin/uv sync {frozen}--no-dev --python {python} "
+                f"--project /installed-agent/astrbot 2>&1 | tee -a {log}"
+            ),
+            env=install_env,
         )
         if self._get_env("PHOENIX_COLLECTOR_ENDPOINT"):
             await self.exec_as_root(
                 environment,
                 command=(
+                    f"echo 'Installing Phoenix tracing dependencies' | tee -a {log} && "
                     "/installed-agent/bin/uv pip install "
                     "--python /installed-agent/astrbot/.venv/bin/python "
-                    "-r /installed-agent/astrbot/harbor_plugin/requirements-tracing.txt"
+                    "-r /installed-agent/astrbot/harbor_plugin/requirements-tracing.txt "
+                    f"2>&1 | tee -a {log}"
                 ),
+                env=install_env,
             )
 
     async def run(

@@ -18,8 +18,9 @@ from harbor.models.agent.context import AgentContext
 @pytest.mark.asyncio
 @pytest.mark.parametrize("tracing", [False, True])
 @pytest.mark.parametrize("locked", [False, True])
+@pytest.mark.parametrize("local_runtime", [False, True])
 async def test_source_snapshot_includes_edits_but_not_runtime_data(
-    tmp_path, monkeypatch, tracing, locked
+    tmp_path, monkeypatch, tracing, locked, local_runtime
 ):
     """Package current tracked source without the user's private runtime files."""
     checkout = tmp_path / "checkout"
@@ -43,6 +44,13 @@ async def test_source_snapshot_includes_edits_but_not_runtime_data(
     if not locked:
         (checkout / "uv.lock").unlink()
     contents = {}
+    runtime = tmp_path / "runtime.tar.gz"
+    runtime.write_bytes(b"operator-managed-toolchain")
+    if local_runtime:
+        monkeypatch.setenv("ASTRBOT_HARBOR_RUNTIME_ARCHIVE", str(runtime))
+    else:
+        monkeypatch.delenv("ASTRBOT_HARBOR_RUNTIME_ARCHIVE", raising=False)
+    monkeypatch.setenv("ASTRBOT_HARBOR_PYPI_INDEX", "https://example.org/simple")
     if tracing:
         monkeypatch.setenv(
             "PHOENIX_COLLECTOR_ENDPOINT", "http://collector:6006/v1/traces"
@@ -51,6 +59,10 @@ async def test_source_snapshot_includes_edits_but_not_runtime_data(
         monkeypatch.delenv("PHOENIX_COLLECTOR_ENDPOINT", raising=False)
 
     async def upload(source_path, target_path):
+        if target_path == "/installed-agent/runtime.tar.gz":
+            assert Path(source_path).read_bytes() == b"operator-managed-toolchain"
+            contents["runtime_uploaded"] = True
+            return
         with tarfile.open(source_path) as archive:
             for member in archive.getmembers():
                 contents[member.name] = archive.extractfile(member).read().decode()
@@ -68,11 +80,20 @@ async def test_source_snapshot_includes_edits_but_not_runtime_data(
     assert "arize-phoenix-otel" in contents["harbor_plugin/requirements-tracing.txt"]
     assert ("uv.lock" in contents) == locked
     assert (
-        "--frozen" in agent.exec_as_root.call_args_list[0].kwargs["command"]
+        "--frozen" in agent.exec_as_root.call_args_list[2].kwargs["command"]
     ) == locked
     assert not any(name.startswith("data/") for name in contents)
     assert agent.snapshot_sha256
-    assert agent.exec_as_root.await_count == (2 if tracing else 1)
+    assert agent.exec_as_root.await_count == (4 if tracing else 3)
+    assert contents.get("runtime_uploaded", False) == local_runtime
+    bootstrap = agent.exec_as_root.call_args_list[1].kwargs["command"]
+    assert ("curl" not in bootstrap) == local_runtime
+    sync = agent.exec_as_root.call_args_list[2].kwargs
+    assert sync["env"]["UV_DEFAULT_INDEX"] == "https://example.org/simple"
+    assert "setup.log" in sync["command"]
+    if local_runtime:
+        assert sync["env"]["UV_PYTHON_DOWNLOADS"] == "never"
+        assert "--python /installed-agent/python/bin/python3.12" in sync["command"]
     if tracing:
         assert (
             "requirements-tracing.txt" in agent.exec_as_root.call_args.kwargs["command"]

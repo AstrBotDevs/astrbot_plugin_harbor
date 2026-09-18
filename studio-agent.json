@@ -3,7 +3,7 @@
   "id": "astrbot",
   "name": "AstrBot",
   "description": "原生工具与 agent loop · 按 GitHub commit 评测",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "entrypoint": "astrbot_plugin_harbor.agent:AstrBotAgent",
   "model_required": true,
   "key_env": "ASTRBOT_EVAL_API_KEY",

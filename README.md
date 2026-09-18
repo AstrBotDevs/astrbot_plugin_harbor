@@ -85,3 +85,9 @@ uv run python scripts/install_adapter.py /path/to/plugin/studio-agent.json --pac
 ```
 
 已有运行保留原 adapter 快照，更新插件不会改变其执行代码。未提交依赖锁文件的 GitHub commit 会在容器中解析依赖，源码固定不代表所有第三方包版本也已固定。
+
+## Restricted-network installation
+
+Operators can set `ASTRBOT_HARBOR_RUNTIME_ARCHIVE` in the Harbor process environment to a trusted, read-only gzip tar archive containing `bin/uv` and `python/bin/python3.12` (with the complete relocatable Python distribution). The binaries must match the task container's OS, architecture and libc. The adapter uploads this archive into each isolated container and disables Python downloads. Keep archives under immutable versioned names; their SHA-256 is recorded in `agent/setup.log`. No AstrBot installation or checkout is required on the host. Without this setting, the adapter uses the public uv installer with bounded downloads.
+
+Set `ASTRBOT_HARBOR_PYPI_INDEX` to an operator-approved Python package index, e.g. `https://mirrors.aliyun.com/pypi/simple`. This applies to both AstrBot and Phoenix dependency installation. Committed `uv.lock` files remain frozen and may reference their original package URLs. The adapter writes each installation stage and package-manager output to `agent/setup.log`, including on setup failure.
