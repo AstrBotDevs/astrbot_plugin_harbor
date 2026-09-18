@@ -44,7 +44,10 @@ async def run(args: argparse.Namespace) -> None:
     from astrbot.core.platform.message_type import MessageType
     from astrbot.core.platform.platform_metadata import PlatformMetadata
     from astrbot.core.provider.entities import ProviderRequest
-    from astrbot.core.utils.astrbot_path import get_astrbot_skills_path
+    from astrbot.core.utils.astrbot_path import (
+        get_astrbot_plugin_path,
+        get_astrbot_skills_path,
+    )
 
     if args.config:
         # AstrBotConfig fills missing fields and performs normal config migration.
@@ -150,6 +153,13 @@ async def run(args: argparse.Namespace) -> None:
                     "Harbor plugin failed to load in the evaluation instance"
                 )
             plugin = registered.star_cls
+            loaded_from = Path(sys.modules[type(plugin).__module__].__file__).resolve()
+            if not loaded_from.is_relative_to(
+                Path(get_astrbot_plugin_path()).resolve()
+            ):
+                raise RuntimeError(
+                    "Harbor plugin was imported outside the isolated runtime"
+                )
             result["plugin_version"] = registered.version
             provider = context.get_provider_by_id(provider_id)
             if provider is None:
@@ -333,6 +343,11 @@ def main() -> None:
         from_file = Path(__file__).resolve().parent
         plugin_dir = Path(runtime_dir) / "data/plugins/astrbot_plugin_harbor"
         plugin_dir.mkdir(parents=True)
+        # AstrBot imports data.plugins by module name, independently of ASTRBOT_ROOT.
+        # Explicit packages prevent a host data package from shadowing this instance.
+        (plugin_dir.parent / "__init__.py").touch()
+        (plugin_dir.parent.parent / "__init__.py").touch()
+        sys.path.insert(0, runtime_dir)
         # The manifest has no AstrBot imports, so root selection remains early.
         from manifest import PLUGIN_FILES
 

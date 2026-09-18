@@ -24,6 +24,11 @@ def test_local_evaluation_uses_real_tools_and_workspace(
     instruction = tmp_path / "instruction.txt"
     instruction.write_text("Write a marker file and read it back.", encoding="utf-8")
     output = tmp_path / "logs"
+    shadow = tmp_path / "host packages"
+    (shadow / "data").mkdir(parents=True)
+    (shadow / "data/__init__.py").write_text(
+        'raise RuntimeError("Host data package must not be imported")\n'
+    )
     skills = tmp_path / "skills"
     (skills / "marker-skill").mkdir(parents=True)
     (skills / "marker-skill/SKILL.md").write_text(
@@ -172,6 +177,7 @@ def test_local_evaluation_uses_real_tools_and_workspace(
                     if not key.startswith("PHOENIX_")
                 },
                 "ASTRBOT_EVAL_API_KEY": "test-only-key",
+                "PYTHONPATH": str(shadow),
                 "ASTRBOT_EVAL_BASE_URL": f"http://127.0.0.1:{server.server_port}/v1",
                 **(
                     {
