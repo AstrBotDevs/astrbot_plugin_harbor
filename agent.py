@@ -137,9 +137,6 @@ class AstrBotAgent(BaseInstalledAgent):
                     "done; fi; fi"
                 ),
             )
-        await self.ensure_system_dependencies(
-            environment, ("curl", "git", "build_tools")
-        )
         # Operator-supplied toolchains avoid GitHub downloads on restricted networks.
         runtime = self._get_env("ASTRBOT_HARBOR_RUNTIME_ARCHIVE")
         install_env = {"UV_HTTP_TIMEOUT": "30", "UV_HTTP_RETRIES": "2"}
@@ -164,6 +161,11 @@ class AstrBotAgent(BaseInstalledAgent):
                 command=(
                     f"echo 'Extracting toolchain sha256:{runtime_hash}' | tee -a {log} && "
                     "tar -xzf /installed-agent/runtime.tar.gz -C /installed-agent && "
+                    "if [ -f /installed-agent/certs/ca-certificates.crt ]; then "
+                    "mkdir -p /etc/apt/apt.conf.d && "
+                    "printf '%s\\n' 'Acquire::https::CaInfo "
+                    '"/installed-agent/certs/ca-certificates.crt";\' '
+                    "> /etc/apt/apt.conf.d/99harbor-ca; fi && "
                     f"/installed-agent/bin/uv --version | tee -a {log} && "
                     f"/installed-agent/python/bin/python3.12 --version | tee -a {log}"
                 ),
@@ -171,6 +173,9 @@ class AstrBotAgent(BaseInstalledAgent):
             python = "/installed-agent/python/bin/python3.12"
             install_env["UV_PYTHON_DOWNLOADS"] = "never"
         else:
+            await self.ensure_system_dependencies(
+                environment, ("curl", "git", "build_tools")
+            )
             await self.exec_as_root(
                 environment,
                 command=(
@@ -183,6 +188,10 @@ class AstrBotAgent(BaseInstalledAgent):
             )
             python = "3.12"
             install_env["UV_PYTHON_INSTALL_DIR"] = "/installed-agent/python"
+        if runtime:
+            await self.ensure_system_dependencies(
+                environment, ("curl", "git", "build_tools")
+            )
         await self.exec_as_root(
             environment,
             command=(
