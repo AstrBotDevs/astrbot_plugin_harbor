@@ -1,0 +1,8 @@
+name: astrbot_plugin_harbor
+display_name: Harbor Evaluation & Phoenix
+desc: Run isolated Harbor evaluations with native AstrBot tools and optional Phoenix traces.
+version: v0.1.0
+author: local
+repo: ""
+astrbot_version: ">=4.28.1,<5"
+support_platforms: []
