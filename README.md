@@ -2,6 +2,8 @@
 
 将 Harbor adapter、无界步数的评测执行和 Phoenix trace 上报放在独立插件中，使用原版 AstrBot，无需评测专用分支或核心补丁。
 
+代码仓库：[AstrBotDevs/astrbot_plugin_harbor](https://github.com/AstrBotDevs/astrbot_plugin_harbor)。配套工作台：[Harbor Studio](https://github.com/AstrBotDevs/harbor-studio)。两个仓库均为私有仓库，需要相应访问权限。
+
 ## 安装与更新
 
 插件目录为 `AstrBot/data/plugins/astrbot_plugin_harbor/`，有独立 Git 仓库。正常加载只依赖 AstrBot，不启动评测、不修改聊天行为，也不安装 Harbor / Phoenix。这些能力由独立评测进程按需启用。
