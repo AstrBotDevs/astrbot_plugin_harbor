@@ -118,22 +118,25 @@ class AstrBotAgent(BaseInstalledAgent):
                     )
             self.snapshot_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
             await environment.upload_file(archive, "/installed-agent/astrbot.tar.gz")
-        if mirror := self._get_env("ASTRBOT_HARBOR_UBUNTU_MIRROR"):
+        for distro, pattern in (
+            ("ubuntu", r"https?://(archive|security)\.ubuntu\.com/ubuntu"),
+            ("debian", r"https?://(deb|security)\.debian\.org/debian"),
+        ):
+            mirror = self._get_env(f"ASTRBOT_HARBOR_{distro.upper()}_MIRROR")
+            if not mirror:
+                continue
             if not re.fullmatch(r"https?://[A-Za-z0-9.:-]+/[A-Za-z0-9/_-]+", mirror):
-                raise ValueError("Invalid Ubuntu package mirror URL")
-            replacement = shlex.quote(
-                r"s#https\?://\(archive\|security\)\.ubuntu\.com/ubuntu#"
-                + mirror.rstrip("/")
-                + "#g"
-            )
+                raise ValueError(f"Invalid {distro} package mirror URL")
+            # Preserve Debian's '-security' suffix when replacing the base URI.
+            replacement = shlex.quote(f"s#{pattern}#{mirror.rstrip('/')}#g")
             await self.exec_as_root(
                 environment,
                 command=(
                     "if [ -f /etc/os-release ]; then . /etc/os-release; "
-                    'if [ "$ID" = ubuntu ]; then '
+                    f'if [ "$ID" = {distro} ]; then '
                     "for file in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources "
                     "/etc/apt/sources.list.d/*.list; do "
-                    f'[ ! -f "$file" ] || sed -i {replacement} "$file"; '
+                    f'[ ! -f "$file" ] || sed -E -i {replacement} "$file"; '
                     "done; fi; fi"
                 ),
             )

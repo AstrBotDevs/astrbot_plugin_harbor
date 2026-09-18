@@ -92,6 +92,6 @@ Operators can set `ASTRBOT_HARBOR_RUNTIME_ARCHIVE` in the Harbor process environ
 
 Set `ASTRBOT_HARBOR_PYPI_INDEX` to an operator-approved Python package index, e.g. `https://mirrors.aliyun.com/pypi/simple`. This applies to both AstrBot and Phoenix dependency installation. Committed `uv.lock` files remain frozen and may reference their original package URLs. The adapter writes each installation stage and package-manager output to `agent/setup.log`, including on setup failure.
 
-For Ubuntu task images, `ASTRBOT_HARBOR_UBUNTU_MIRROR=https://repo.huaweicloud.com/ubuntu` replaces the official archive/security URLs before installing system dependencies. Other distributions are left unchanged; Ubuntu package signature verification remains enabled.
+For Ubuntu task images, `ASTRBOT_HARBOR_UBUNTU_MIRROR=https://repo.huaweicloud.com/ubuntu` replaces the official archive/security URLs before installing system dependencies. Debian images support `ASTRBOT_HARBOR_DEBIAN_MIRROR=https://repo.huaweicloud.com/debian`; security repositories retain the `-security` suffix. Each setting applies only to its matching distribution. Package signature verification remains enabled.
 
 For HTTPS apt mirrors on minimal images, include a public CA bundle at `certs/ca-certificates.crt` inside the toolchain archive. The adapter extracts it before installing system packages and configures apt to verify HTTPS with this bundle. Certificate and package-signature verification stay enabled.

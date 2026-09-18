@@ -19,8 +19,9 @@ from harbor.models.agent.context import AgentContext
 @pytest.mark.parametrize("tracing", [False, True])
 @pytest.mark.parametrize("locked", [False, True])
 @pytest.mark.parametrize("local_runtime", [False, True])
+@pytest.mark.parametrize("distro", ["ubuntu", "debian"])
 async def test_source_snapshot_includes_edits_but_not_runtime_data(
-    tmp_path, monkeypatch, tracing, locked, local_runtime
+    tmp_path, monkeypatch, tracing, locked, local_runtime, distro
 ):
     """Package current tracked source without the user's private runtime files."""
     checkout = tmp_path / "checkout"
@@ -46,9 +47,13 @@ async def test_source_snapshot_includes_edits_but_not_runtime_data(
     contents = {}
     runtime = tmp_path / "runtime.tar.gz"
     runtime.write_bytes(b"operator-managed-toolchain")
+    for name in ("UBUNTU", "DEBIAN"):
+        monkeypatch.delenv(f"ASTRBOT_HARBOR_{name}_MIRROR", raising=False)
     if local_runtime:
         monkeypatch.setenv("ASTRBOT_HARBOR_RUNTIME_ARCHIVE", str(runtime))
-        monkeypatch.setenv("ASTRBOT_HARBOR_UBUNTU_MIRROR", "http://example.org/ubuntu")
+        monkeypatch.setenv(
+            f"ASTRBOT_HARBOR_{distro.upper()}_MIRROR", f"https://example.org/{distro}"
+        )
     else:
         monkeypatch.delenv("ASTRBOT_HARBOR_RUNTIME_ARCHIVE", raising=False)
         monkeypatch.delenv("ASTRBOT_HARBOR_UBUNTU_MIRROR", raising=False)
@@ -83,7 +88,24 @@ async def test_source_snapshot_includes_edits_but_not_runtime_data(
     assert ("uv.lock" in contents) == locked
     calls = agent.exec_as_root.call_args_list
     if local_runtime:
-        assert "http://example.org/ubuntu" in calls[0].kwargs["command"]
+        command = calls[0].kwargs["command"]
+        assert f"https://example.org/{distro}" in command
+        replacement = shlex.split(command.split("sed -E -i ", 1)[1])[0]
+        source = (
+            "URIs: http://deb.debian.org/debian https://security.debian.org/debian-security\n"
+            if distro == "debian"
+            else "deb http://archive.ubuntu.com/ubuntu noble main\n"
+        )
+        result = subprocess.run(
+            ["sed", "-E", replacement],
+            input=source,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        assert f"https://example.org/{distro}" in result
+        if distro == "debian":
+            assert "https://example.org/debian-security" in result
         calls = calls[1:]
     assert ("--frozen" in calls[2].kwargs["command"]) == locked
     assert not any(name.startswith("data/") for name in contents)
