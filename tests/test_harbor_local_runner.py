@@ -218,7 +218,7 @@ def test_local_evaluation_uses_real_tools_and_workspace(
     assert report["tokens"]["input"] == 10 * (tool_rounds + 1)
     assert report["trace"] == result.get("trace")
     assert result["status"] == "completed"
-    assert result["plugin_version"] == "v0.2.0"
+    assert result["plugin_version"] == "v0.2.1"
     assert result["max_steps"] is None
     assert result["permissions"] == {
         "allow_execution": True,
