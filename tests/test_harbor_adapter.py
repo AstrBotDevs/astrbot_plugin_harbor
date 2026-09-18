@@ -48,8 +48,10 @@ async def test_source_snapshot_includes_edits_but_not_runtime_data(
     runtime.write_bytes(b"operator-managed-toolchain")
     if local_runtime:
         monkeypatch.setenv("ASTRBOT_HARBOR_RUNTIME_ARCHIVE", str(runtime))
+        monkeypatch.setenv("ASTRBOT_HARBOR_UBUNTU_MIRROR", "http://example.org/ubuntu")
     else:
         monkeypatch.delenv("ASTRBOT_HARBOR_RUNTIME_ARCHIVE", raising=False)
+        monkeypatch.delenv("ASTRBOT_HARBOR_UBUNTU_MIRROR", raising=False)
     monkeypatch.setenv("ASTRBOT_HARBOR_PYPI_INDEX", "https://example.org/simple")
     if tracing:
         monkeypatch.setenv(
@@ -79,16 +81,18 @@ async def test_source_snapshot_includes_edits_but_not_runtime_data(
     assert "def trace_agent" in contents["harbor_plugin/tracing.py"]
     assert "arize-phoenix-otel" in contents["harbor_plugin/requirements-tracing.txt"]
     assert ("uv.lock" in contents) == locked
-    assert (
-        "--frozen" in agent.exec_as_root.call_args_list[2].kwargs["command"]
-    ) == locked
+    calls = agent.exec_as_root.call_args_list
+    if local_runtime:
+        assert "http://example.org/ubuntu" in calls[0].kwargs["command"]
+        calls = calls[1:]
+    assert ("--frozen" in calls[2].kwargs["command"]) == locked
     assert not any(name.startswith("data/") for name in contents)
     assert agent.snapshot_sha256
-    assert agent.exec_as_root.await_count == (4 if tracing else 3)
+    assert agent.exec_as_root.await_count == (4 if tracing else 3) + local_runtime
     assert contents.get("runtime_uploaded", False) == local_runtime
-    bootstrap = agent.exec_as_root.call_args_list[1].kwargs["command"]
+    bootstrap = calls[1].kwargs["command"]
     assert ("curl" not in bootstrap) == local_runtime
-    sync = agent.exec_as_root.call_args_list[2].kwargs
+    sync = calls[2].kwargs
     assert sync["env"]["UV_DEFAULT_INDEX"] == "https://example.org/simple"
     assert "setup.log" in sync["command"]
     if local_runtime:
